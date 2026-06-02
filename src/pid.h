@@ -11,9 +11,9 @@ typedef struct PIDControllerInfoStruct {
     float Ti;   // Reset time (0 -> no I part)
     float Td;   // Derivative time (0 -> no D part)
     float Tf;   // Filter time constant (0 -> no filter)
-    bool Arw;   // true: anti-windup active, false: anti-windup inactive
-    bool IPartActivePrev; // Boolean indicating whether the I part was active in the previous compute step to only recompute the coefficients for the controll algorithm when actually needed.
-    bool FilterActivePrev; // Boolean indicating whether the filter was active in the previous compute step to only recompute the coefficients for the filter algorithm when actually needed.
+    bool arw;   // true: anti-windup active, false: anti-windup inactive
+    bool i_part_active_prev; // Boolean indicating whether the I part was active in the previous compute step to only recompute the coefficients for the controll algorithm when actually needed.
+    bool filter_active_prev; // Boolean indicating whether the filter was active in the previous compute step to only recompute the coefficients for the filter algorithm when actually needed.
 
     // Coefficients for the control algorithm
 	float C[3];
@@ -22,15 +22,15 @@ typedef struct PIDControllerInfoStruct {
     float Cf[2];
 
 	// Lower and upper bounds
-	float mMin;
-    float mMax;
+	float m_min;
+    float m_max;
 
 	// Sample time
 	float Ts;
 
-    // Buffer for control deviation (filtered and unfiltered): e[0] is the most recent value, e[1] the one from the previous step, ...
+    // Buffer for control error (filtered and unfiltered): e[0] is the most recent value, e[1] the one from the previous step, ...
 	float e[3];
-    float eFil[3];
+    float e_fil[3];
 
     // Buffer actuation value: m[0] is the most recent value, m[1] the one from the previous step, ...
 	float m[3]; // Controller output
@@ -42,15 +42,15 @@ typedef struct PIDControllerInfoStruct {
 
 } PIDControllerInfo;
 
-void pid_init(PIDControllerInfo* PidInfo);
-bool pid_para_set(PIDControllerInfo* PidInfo, float Kp, float Ti, float Td, float Tf, float Ts);
-bool pid_limits_set(PIDControllerInfo* PidInfo, float Mmin, float Mmax);
-void pid_arw_set(PIDControllerInfo* PidInfo, bool Arw);
-void pid_execute(PIDControllerInfo* PidInfo, float e, float* m);
+void pid_init(PIDControllerInfo* pid_info);
+bool pid_para_set(PIDControllerInfo* pid_info, float Kp, float Ti, float Td, float Tf, float Ts);
+bool pid_limits_set(PIDControllerInfo* pid_info, float Mmin, float Mmax);
+void pid_arw_set(PIDControllerInfo* pid_info, bool Arw);
+void pid_execute(PIDControllerInfo* pid_info, float e, float* m);
 
-void pid_util_update_coeff(PIDControllerInfo* PidInfo, bool ForceCalculation);
-bool pid_util_i_part_active(PIDControllerInfo* PidInfo);
-bool pid_util_filter_active(PIDControllerInfo* PidInfo);
+void pid_util_update_coeff(PIDControllerInfo* pid_info, bool force_calculation);
+bool pid_util_i_part_active(PIDControllerInfo* pid_info);
+bool pid_util_filter_active(PIDControllerInfo* pid_info);
 float pid_util_max(float a, float b);
 float pid_util_min(float a, float b);
 
