@@ -48,8 +48,10 @@ bool pid_limits_set(PIDControllerInfo* PidInfo, float Mmin, float Mmax);
 void pid_arw_set(PIDControllerInfo* PidInfo, bool Arw);
 void pid_execute(PIDControllerInfo* PidInfo, float e, float* m);
 
-void pid_update_coeff(PIDControllerInfo* PidInfo, bool ForceCalculation);
-bool pid_i_part_active(PIDControllerInfo* PidInfo);
-bool pid_filter_active(PIDControllerInfo* PidInfo);
+void pid_util_update_coeff(PIDControllerInfo* PidInfo, bool ForceCalculation);
+bool pid_util_i_part_active(PIDControllerInfo* PidInfo);
+bool pid_util_filter_active(PIDControllerInfo* PidInfo);
+float pid_util_max(float a, float b);
+float pid_util_min(float a, float b);
 
 #endif

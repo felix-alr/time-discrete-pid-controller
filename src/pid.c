@@ -1,7 +1,7 @@
 #include "pid.h"
 
 #include <limits.h>
-#include<math.h>
+#include<float.h>
 
 /** Initializes a PID controller
  *
@@ -12,29 +12,31 @@ void pid_init(PIDControllerInfo* PidInfo)
 {
     int i;
 
-    PidInfo->Kp = 0.0;
-    PidInfo->Ti = 0.0;
-    PidInfo->Td = 0.0;
-    PidInfo->Tf = 0.0;
+    PidInfo->Kp = 0.0f;
+    PidInfo->Ti = 0.0f;
+    PidInfo->Td = 0.0f;
+    PidInfo->Tf = 0.0f;
     PidInfo->Arw = false;
-    PidInfo->Ts = 1.0;
-    PidInfo->mMin = - __FLT_MAX__;
-    PidInfo->mMax = __FLT_MAX__;
-
-    for (i = 0; i < 3; i++) {
-        PidInfo->C[i] = 0.0;
-        PidInfo->e[i] = 0.0;
-        PidInfo->m[i] = 0.0;
-    }
-
-    PidInfo->Cf[0] = 0.0;
-    PidInfo->Cf[1] = 0.0;
-
-    PidInfo->P = 0.0;
-    PidInfo->I = 0.0;
-    PidInfo->D = 0.0;
+    PidInfo->Ts = 1.0f;
+    PidInfo->mMin = -FLT_MAX;
+    PidInfo->mMax = FLT_MAX;
 
     PidInfo->IPartActivePrev = true;
+    PidInfo->FilterActivePrev = true;
+
+    for (i = 0; i < 3; i++) {
+        PidInfo->C[i] = 0.0f;
+        PidInfo->e[i] = 0.0f;
+        PidInfo->eFil[i] = 0.0f;
+        PidInfo->m[i] = 0.0f;
+    }
+
+    PidInfo->Cf[0] = 0.0f;
+    PidInfo->Cf[1] = 0.0f;
+
+    PidInfo->P = 0.0f;
+    PidInfo->I = 0.0f;
+    PidInfo->D = 0.0f;
 }
 
 
@@ -67,7 +69,7 @@ void pid_init(PIDControllerInfo* PidInfo)
  */
 bool pid_para_set(PIDControllerInfo* PidInfo, float Kp, float Ti, float Td, float Tf, float Ts)
 {
-    if (Kp <= 0.0f || Ti < 0.0f || Td < 0.0f || Tf < 0.0f || Ts <= 0.0f || (Ts >= Tf && Tf != 0))
+    if (Kp <= 0.0f || Ti < 0.0f || Td < 0.0f || Tf < 0.0f || Ts <= 0.0f || (Ts >= Tf && Tf != 0.0f))
     {
         return false;
     }
@@ -79,7 +81,7 @@ bool pid_para_set(PIDControllerInfo* PidInfo, float Kp, float Ti, float Td, floa
     PidInfo->Tf = Tf;
     PidInfo->Ts = Ts;
 
-    pid_update_coeff(PidInfo, true);
+    pid_util_update_coeff(PidInfo, true);
 
     return true;
 }
@@ -135,24 +137,24 @@ void pid_execute(PIDControllerInfo* PidInfo, float e, float* m)
     PidInfo->e[0] = e;
 
     // Update coefficients for filter and PID controller
-    pid_update_coeff(PidInfo, false);
+    pid_util_update_coeff(PidInfo, false);
 
     // Determine if filter and i-part are active
-    bool IPartActive = pid_i_part_active(PidInfo);
-    bool FilterActive = pid_filter_active(PidInfo);
+    bool IPartActive = pid_util_i_part_active(PidInfo);
+    bool FilterActive = pid_util_filter_active(PidInfo);
 
     // Use filtered or measured e-values depending on filter usage
     float (*eCalc)[3] = FilterActive ? PidInfo->eFil : PidInfo->e;
 
     // Calculate controller output and write to actuation value history for next execution step
     PidInfo->P = PidInfo->Kp * (*eCalc)[0];
-    PidInfo->I = PidInfo->Ti > 0 ? IPartActive ? PidInfo->I + PidInfo->Kp * PidInfo->Ts / (2*PidInfo->Ti) * ((*eCalc)[0] + (*eCalc)[1]) : PidInfo->I : 0.0f;
+    PidInfo->I = IPartActive ? PidInfo->I + PidInfo->Kp * PidInfo->Ts / (2.0f * PidInfo->Ti) * ((*eCalc)[0] + (*eCalc)[1]) : PidInfo->I;
     PidInfo->D = PidInfo->Kp * PidInfo->Td * ((*eCalc)[0] - (*eCalc)[1]) / PidInfo->Ts;
 
     PidInfo->m[0] = PidInfo->m[1] + PidInfo->C[0] * (*eCalc)[0] + PidInfo->C[1] * (*eCalc)[1] + PidInfo->C[2] * (*eCalc)[2];
 
     // Limit output to control circuit using given bounds
-    *m = fmaxf(fminf(PidInfo->m[0], PidInfo->mMax), PidInfo->mMin);
+    *m = pid_util_max(pid_util_min(PidInfo->m[0], PidInfo->mMax), PidInfo->mMin);
 }
 
 /** Updates the control and filter algorithm's coefficients when needed.
@@ -160,10 +162,10 @@ void pid_execute(PIDControllerInfo* PidInfo, float e, float* m)
 * @param PidInfo Pointer to the PIDControllerInfo structure
 * @param ForceCalculation true: force recomputing coefficients, false: recompute only if something has changed
 */
-void pid_update_coeff(PIDControllerInfo* PidInfo, bool ForceCalculation)
+void pid_util_update_coeff(PIDControllerInfo* PidInfo, bool ForceCalculation)
 {
-    bool IPartActive = pid_i_part_active(PidInfo);
-    bool FilterActive = pid_filter_active(PidInfo);
+    bool IPartActive = pid_util_i_part_active(PidInfo);
+    bool FilterActive = pid_util_filter_active(PidInfo);
 
     // Check if IPartActive or FilterActive has changed to only recompute coefficients when needed, unless calculation is forced
     if (PidInfo->IPartActivePrev == IPartActive && PidInfo->FilterActivePrev == FilterActive  && (ForceCalculation == false))
@@ -177,34 +179,61 @@ void pid_update_coeff(PIDControllerInfo* PidInfo, bool ForceCalculation)
     PidInfo->FilterActivePrev = FilterActive;
 
     // Compute coefficients with / without Ki depending on whether IPartActive
-    float Ki = PidInfo->Kp * PidInfo->Ts / (2 * PidInfo->Ti);
+    float Ki = IPartActive ? PidInfo->Kp * PidInfo->Ts / (2.0f * PidInfo->Ti) : 0.0f;
     float Kd = PidInfo->Kp * PidInfo->Td / PidInfo->Ts;
 
-    PidInfo->C[0] = PidInfo->Kp + Kd + (IPartActive ? Ki : 0.0);
-    PidInfo->C[1] = -PidInfo->Kp - 2 * Kd + (IPartActive ? Ki : 0.0);
+    PidInfo->C[0] = PidInfo->Kp + Ki + Kd;
+    PidInfo->C[1] = -PidInfo->Kp + Ki - 2.0f * Kd;
     PidInfo->C[2] = Kd;
 
     // Compute filter coefficients
-    PidInfo->Cf[0] = PidInfo->Tf == 0 ? 0.0f : PidInfo->Ts / PidInfo->Tf;
-    PidInfo->Cf[1] = PidInfo->Tf == 0 ? 0.0f : 1 - PidInfo->Ts / PidInfo->Tf;
+    PidInfo->Cf[0] = PidInfo->Tf == 0.0f ? 0.0f : PidInfo->Ts / PidInfo->Tf;
+    PidInfo->Cf[1] = PidInfo->Tf == 0.0f ? 0.0f : 1.0f - PidInfo->Ts / PidInfo->Tf;
 }
 
-/** Returns whether the I part should be computed or not depending on whether ARW is used and bounds are exceeded.
+/**
 * 
 * @param PidInfo Pointer to the PIDControllerInfo structure
+* 
+* @returns whether the I part should be computed or not depending on whether ARW is used and bounds are exceeded.
 */
-bool pid_i_part_active(PIDControllerInfo* PidInfo)
+bool pid_util_i_part_active(PIDControllerInfo* PidInfo)
 {
-    // !(ARW active && bounds exceeded) ?
-    return !(PidInfo->Arw && (PidInfo->m[0] >= PidInfo->mMax || PidInfo->m[0] <= PidInfo->mMin));
+    // !(Ti==0 || ARW active && bounds exceeded)
+    return !(PidInfo->Ti == 0.0f || PidInfo->Arw && (PidInfo->m[0] >= PidInfo->mMax || PidInfo->m[0] <= PidInfo->mMin));
 }
 
-/** Returns whether the filter is active depending on whether Tf is 0 or not.
+/**
 * 
 * @param PidInfo Pointer to the PIDControllerInfo structure
+* 
+* @returns whether the filter is active depending on whether Tf is 0 or not.
 */
-bool pid_filter_active(PIDControllerInfo* PidInfo)
+bool pid_util_filter_active(PIDControllerInfo* PidInfo)
 {
     // Tf != 0 ?
     return PidInfo->Tf != 0.0f;
+}
+
+/**
+* @param a first number for comparison.
+* @param b second number for comparison.
+* 
+* @returns a: if a > b, b: otherwise
+*/
+float pid_util_max(float a, float b)
+{
+    return a > b ? a : b;
+}
+
+
+/**
+* @param a first number for comparison.
+* @param b second number for comparison.
+*
+* @returns a: if a < b, b: otherwise
+*/
+float pid_util_min(float a, float b)
+{
+    return a < b ? a : b;
 }
